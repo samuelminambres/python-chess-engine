@@ -23,6 +23,7 @@ Designed with clean software engineering principles in mind, it features strong 
 - [Prerequisites & Installation](#prerequisites--installation)
 - [How to Play](#how-to-play)
 - [AI Engine Details](#ai-engine-details)
+- [Testing](#testing)
 - [Future Improvements](#future-improvements)
 - [License](#license)
 
@@ -36,20 +37,22 @@ Designed with clean software engineering principles in mind, it features strong 
   - **En Passant:** Real-time square tracking for pawn double-steps and diagonal capture execution.
   - **Pawn Promotion:** Interactive selection modal allowing promotion to Queen, Rook, Bishop, or Knight.
 - **Game State & Draw Detection:**
-  - Real-time Check, Checkmate, and Stalemate evaluation.
-  - **50-Move Rule:** Automatic tracking of half-moves without pawn advances or captures.
+  - Check, Checkmate, and Stalemate are detected on the very move that causes them.
+  - **50-Move Rule:** Automatic draw after 100 half-moves (50 moves per player) without pawn advances or captures.
   - **Threefold Repetition:** Automatic draw detection upon reaching identical board states three or more times under FIDE criteria.
   - **Insufficient Material:** Detection of automatic draws (K vs K, K+B vs K, K+N vs K).
   - Prevention of any move that places or leaves the player's own king in check.
 - **Artificial Intelligence (Minimax + Alpha-Beta Pruning):**
   - Player vs Environment (PvE) game mode.
   - Heuristic positional scoring using **Piece-Square Tables (PST)** and piece material values.
-  - Alpha-beta pruning to minimize explored search branch space.
+  - Alpha-beta pruning with capture-first move ordering to minimize explored search branch space.
+  - Checkmate-aware scoring: faster mates are preferred and stalemates score zero.
 - **Robust Move History & Undo System:**
-  - Stack-based state snapshots via the `Move` class.
+  - Atomic `make_move` / `undo_move` operations: each `Move` record captures the previous state *before* the move is applied, so any move (castling, en passant and promotion included) can be reverted exactly.
   - Multi-move undo capability (reverting both player and AI moves in PvE, or single turns in PvP) that completely restores board coordinates, captured pieces, moved flags, en passant targets, and clock states.
 - **Clock & Timer System:**
   - Dedicated player timers with countdown updates, configurable base time, per-move increments, and timeout detection.
+- **Verified Rules:** Move generation is validated against reference perft node counts (see [Testing](#testing)).
 - **Retro-Styled Graphical User Interface:**
   - Rendered with Pygame, featuring square highlighting, custom pixel font typography (`PressStart2P`), interactive sidebar, scrollable move history log, and game-over dialog overlays.
 
@@ -61,15 +64,15 @@ The codebase adheres strictly to separation of concerns across 9 dedicated modul
 
 | Module | Responsibility |
 |---|---|
-| [`src/pieces.py`](src/pieces.py) | **Polymorphic Pieces:** Base `Piece` class and derived classes (`Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`, `King`). Manages directional vectors, piece values, and 8x8 Piece-Square Tables for heuristic evaluation. |
-| [`src/chessboard.py`](src/chessboard.py) | **Board Data Structure:** Encapsulates the 8x8 matrix, piece tracking lists, king position coordinates, en passant target squares, and board-level displacements. |
-| [`src/game.py`](src/game.py) | **Game Rules Orchestrator:** Validates move legality against checks, manages turn alternation, tracks draw conditions (50 moves, stalemate, insufficient material, threefold repetition), and executes player moves. |
-| [`src/move.py`](src/move.py) | **State Snapshot Model:** Captures move coordinates, the moving piece, captured piece, previous en passant state, moved flags, and clock counters for exact undo reconstruction. |
+| [`src/pieces.py`](src/pieces.py) | **Polymorphic Pieces:** Base `Piece` class and derived classes (`Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`, `King`). Subclasses are mostly declarative (directions, sliding flag, value, Piece-Square Table); the shared move generation lives in `Piece`, and only `Pawn` and `King` (castling) extend it. |
+| [`src/chessboard.py`](src/chessboard.py) | **Board Data Structure:** Encapsulates the 8x8 matrix, per-color piece tracking, king positions, and the en passant target. Executes and reverts moves (`make_move` / `undo_move`) including captures, castling, en passant and promotion. |
+| [`src/game.py`](src/game.py) | **Game Rules Orchestrator:** Validates move legality against checks, manages turn alternation and clocks, tracks game-ending conditions (checkmate, stalemate, 50 moves, insufficient material, threefold repetition), and exposes `play_move` for validated moves plus `make_move` / `undo_move` for search. |
+| [`src/move.py`](src/move.py) | **State Snapshot Model:** A dataclass capturing move coordinates, the moving piece, captured piece and square, castling rook move, promoted piece, and the previous en passant, moved-flag and clock values for exact undo reconstruction. |
 | [`src/timers.py`](src/timers.py) | **Clock Management:** Implements countdown timers, per-move time increments, timestamp tracking, and formatted `MM:SS` display strings. |
-| [`src/ai.py`](src/ai.py) | **Decision Engine:** Minimax implementation with alpha-beta pruning and heuristic evaluation combining material count with positional piece-square matrix weights. |
+| [`src/ai.py`](src/ai.py) | **Decision Engine:** A single recursive Minimax with alpha-beta pruning that returns both the score and the best move, plus heuristic evaluation combining material count with positional piece-square matrix weights. |
 | [`src/gui.py`](src/gui.py) | **Presentation Layer:** Handles Pygame rendering, texture caching, board drawing, piece blitting, scrollable history tracking, promotion cards, and start menus. |
 | [`src/utils.py`](src/utils.py) | **Notation Utilities:** Bidirectional conversions between algebraic chess notation (e.g., `'E4'`) and internal 0-indexed grid coordinates `(4, 4)` with strict validation. |
-| [`src/main.py`](src/main.py) | **Main Loop:** Entry point synchronizing event handling, game loop updates, AI execution, and display flipping. |
+| [`src/main.py`](src/main.py) | **Application Controller:** `ChessApp` entry point wiring the game, the AI and the GUI: event dispatch (menu, promotion, sidebar, board), AI turns, clock checks, and the capped-FPS main loop. |
 
 ---
 
@@ -92,8 +95,9 @@ python-chess-engine/
 │   ├── game.py             # Rule validation, turns & draws
 │   ├── gui.py              # Pygame UI and event processing
 │   ├── main.py             # Application entry point
-│   ├── move.py             # Move data model and state snapshot
+│   ├── move.py             # Move dataclass and state snapshot
 │   ├── pieces.py           # Piece hierarchy & PST tables
+│   ├── test_perft.py       # Perft and game-flow tests
 │   ├── timers.py           # Countdown clocks and increments
 │   └── utils.py            # Algebraic coordinate conversions
 ├── LICENSE                 # MIT License
@@ -143,7 +147,7 @@ python-chess-engine/
 1. **Mode Selection:**
    - Launch the game to open the start menu. Choose between **vs AI** (single-player vs bot) or **1vs1** (local two-player).
 2. **Making Moves:**
-   - **Click** on any friendly piece to select it. The selected square will be highlighted in blue.
+   - **Click** on a friendly piece to select it. The selected square will be highlighted in blue.
    - **Click** on a valid destination square to complete your move. If you click another friendly piece, the selection will switch to that piece.
 3. **Pawn Promotion:**
    - When a pawn reaches the opposite back rank, a card menu will appear. Click on Queen, Rook, Bishop, or Knight to promote.
@@ -159,7 +163,9 @@ python-chess-engine/
 
 The bot uses the **Minimax** adversarial search algorithm enhanced with **Alpha-Beta Pruning**:
 
-- **Search Depth:** Default search depth of 3 plies (configurable in `ChessAI`).
+- **Search Depth:** Default search depth of 3 plies, configurable from 1 to 5 in `ChessAI`. Depth 3 answers almost instantly and depth 4 takes roughly a second on a typical machine; the search runs on the main thread, so the window is unresponsive while the bot thinks.
+- **Terminal Positions:** Checkmate scores `±(10000 + remaining depth)` so the engine prefers the fastest mate; stalemate scores 0.
+- **Move Ordering:** Captures are searched first to trigger earlier alpha-beta cutoffs.
 - **Positional Evaluation:**
   Evaluates White material and square values minus Black material and square values:
   $$\text{Score} = \sum_{\text{White}} \left( \text{Value}(p) + \text{PST}(p, x, y) \right) - \sum_{\text{Black}} \left( \text{Value}(p) + \text{PST}(p, x, 7-y) \right)$$
@@ -170,8 +176,24 @@ The bot uses the **Minimax** adversarial search algorithm enhanced with **Alpha-
 
 ---
 
+## Testing
+
+`src/test_perft.py` uses only the standard library (`unittest`). It checks:
+
+- **Move generation** with [perft](https://www.chessprogramming.org/Perft) node counts up to depth 3 on four reference positions (the starting position, "Kiwipete", and two positions stressing en passant pins, promotions and castling rights).
+- **Make/undo integrity:** exploring the whole move tree leaves the position, history and half-move clock untouched, and castling rights survive legal-move generation.
+- **Game flow:** checkmate is reported on the mating move (Scholar's Mate), and the AI finds a mate in one without altering the game.
+
+```bash
+cd src
+python3 -m unittest test_perft -v
+```
+
+---
+
 ## Future Improvements
 
+- [ ] **Non-Blocking AI:** Run the search in a worker thread so the interface stays responsive at higher depths.
 - [ ] **Bitboard Representation:** Accelerate move generation and bitwise operations to allow deeper search depths.
 - [ ] **Transposition Tables & Zobrist Hashing:** Cache previously analyzed positions to prevent redundant evaluations.
 - [ ] **FEN / PGN Support:** Import and export standard chess notation strings and complete game records.
