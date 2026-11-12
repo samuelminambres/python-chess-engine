@@ -1,0 +1,12 @@
+[project]
+name = "python-chess-engine"
+version = "0.1.0"
+description = "Chess engine and Pygame interface with a Minimax + alpha-beta AI opponent."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pygame>=2.5",
+]
+
+[tool.uv]
+package = false
