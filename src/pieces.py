@@ -1,13 +1,93 @@
+from utils import BOARD_SIZE
+
+# Positional bonus tables from White's perspective (row 0 is rank 8).
+PAWN_TABLE = [
+    [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+    [ 5.0,  5.0,  5.0,  5.0,  5.0,  5.0,  5.0,  5.0],
+    [ 1.0,  1.0,  2.0,  3.0,  3.0,  2.0,  1.0,  1.0],
+    [ 0.5,  0.5,  1.0,  2.5,  2.5,  1.0,  0.5,  0.5],
+    [ 0.0,  0.0,  0.0,  2.0,  2.0,  0.0,  0.0,  0.0],
+    [ 0.5, -0.5, -1.0,  0.0,  0.0, -1.0, -0.5,  0.5],
+    [ 0.5,  1.0,  1.0, -2.0, -2.0,  1.0,  1.0,  0.5],
+    [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+]
+KNIGHT_TABLE = [
+    [-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0],
+    [-4.0, -2.0,  0.0,  0.0,  0.0,  0.0, -2.0, -4.0],
+    [-3.0,  0.0,  1.0,  1.5,  1.5,  1.0,  0.0, -3.0],
+    [-3.0,  0.5,  1.5,  2.0,  2.0,  1.5,  0.5, -3.0],
+    [-3.0,  0.0,  1.5,  2.0,  2.0,  1.5,  0.0, -3.0],
+    [-3.0,  0.5,  1.0,  1.5,  1.5,  1.0,  0.5, -3.0],
+    [-4.0, -2.0,  0.0,  0.5,  0.5,  0.0, -2.0, -4.0],
+    [-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0],
+]
+BISHOP_TABLE = [
+    [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0],
+    [-1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0],
+    [-1.0,  0.0,  0.5,  1.0,  1.0,  0.5,  0.0, -1.0],
+    [-1.0,  0.5,  0.5,  1.0,  1.0,  0.5,  0.5, -1.0],
+    [-1.0,  0.0,  1.0,  1.0,  1.0,  1.0,  0.0, -1.0],
+    [-1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, -1.0],
+    [-1.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.5, -1.0],
+    [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0],
+]
+ROOK_TABLE = [
+    [ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+    [ 0.5,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  0.5],
+    [-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
+    [-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
+    [-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
+    [-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
+    [-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
+    [ 0.0,  0.0,  0.0,  0.5,  0.5,  0.0,  0.0,  0.0],
+]
+QUEEN_TABLE = [
+    [-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0],
+    [-1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0],
+    [-1.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0],
+    [-0.5,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5],
+    [ 0.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5],
+    [-1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0],
+    [-1.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0, -1.0],
+    [-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0],
+]
+KING_TABLE = [
+    [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
+    [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
+    [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
+    [-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
+    [-2.0, -3.0, -3.0, -4.0, -4.0, -3.0, -3.0, -2.0],
+    [-1.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -1.0],
+    [ 2.0,  2.0,  0.0,  0.0,  0.0,  0.0,  2.0,  2.0],
+    [ 2.0,  3.0,  1.0,  0.0,  0.0,  1.0,  3.0,  2.0],
+]
+
+ORTHOGONAL = ((1, 0), (-1, 0), (0, 1), (0, -1))
+DIAGONAL = ((1, 1), (1, -1), (-1, 1), (-1, -1))
+
+
 class Piece:
     """Base class representing a chess piece on the board.
 
+    Subclasses only declare their data (directions, value, tables); the move
+    generation shared by all non-pawn pieces lives here.
+
     Attributes:
         color (str): The piece color ('W' for White, 'B' for Black).
-        directions (list or tuple or None): Direction vectors for piece movement.
-        has_moved (bool or None): Whether the piece has moved from its initial square.
-        value (int or None): Material value of the piece.
-        piece_square_table (list[list[float]] or None): Positional bonus evaluation table.
+        has_moved (bool or None): Whether the piece has moved. Only tracked for kings
+            and rooks (castling rights); None for every other piece.
+        value (int): Material value of the piece.
+        directions (tuple[tuple[int, int], ...]): Movement vectors (dx, dy).
+        sliding (bool): True if the piece repeats its directions until blocked.
+        piece_square_table (list[list[float]]): Positional bonus table for evaluation.
+        symbols (tuple[str, str]): Unicode glyphs used for White and Black.
     """
+
+    value = 0
+    directions = ()
+    sliding = False
+    piece_square_table = None
+    symbols = ("", "")
 
     def __init__(self, color):
         """Initializes a chess piece with its color.
@@ -16,10 +96,7 @@ class Piece:
             color (str): The color of the piece, either 'W' (White) or 'B' (Black).
         """
         self.color = color
-        self._directions = None
         self.has_moved = None
-        self.value = None
-        self._piece_square_table = None
 
     @property
     def color(self):
@@ -29,7 +106,7 @@ class Piece:
             str: The piece color ('W' or 'B').
         """
         return self._color
-    
+
     @color.setter
     def color(self, value):
         """Sets the color of the piece.
@@ -47,49 +124,19 @@ class Piece:
             raise ValueError('Color must be "W" or "B"')
         self._color = value
 
-    @property
-    def directions(self):
-        """Gets the movement direction vectors for the piece.
+    def __str__(self):
+        """Returns the Unicode character representation of the piece.
 
         Returns:
-            list or tuple or None: Movement direction vectors (dx, dy).
+            str: The glyph for White or for Black.
         """
-        return self._directions
-    
-    @property
-    def has_moved(self):
-        """Gets whether the piece has moved.
-
-        Returns:
-            bool or None: True if the piece has moved, False or None otherwise.
-        """
-        return self._has_moved
-    
-    @has_moved.setter
-    def has_moved(self, value):
-        """Sets whether the piece has moved.
-
-        Args:
-            value (bool or None): Flag indicating if the piece has moved.
-
-        Raises:
-            TypeError: If value is not a bool and not None.
-        """
-        if not isinstance(value, bool) and value is not None:
-            raise TypeError("Has moved must be bool")
-        self._has_moved = value
-
-    @property
-    def piece_square_table(self):
-        """Gets the piece-square positional evaluation table.
-
-        Returns:
-            list[list[float]] or None: An 8x8 table of positional bonuses/penalties.
-        """
-        return self._piece_square_table
+        return self.symbols[0] if self.color == "W" else self.symbols[1]
 
     def get_possible_moves(self, board, coords):
-        """Calculates sliding piece moves along self.directions from given coordinates.
+        """Calculates the pseudo-legal moves along self.directions.
+
+        Sliding pieces keep going until they hit a piece or the edge; the others
+        take a single step. Moves that leave the own king in check are not filtered.
 
         Args:
             board (Chessboard): The chessboard instance.
@@ -100,69 +147,47 @@ class Piece:
         """
         possible_moves = []
         for dir_x, dir_y in self.directions:
-            current_x, current_y = coords
+            x, y = coords
             while True:
-                current_x += dir_x
-                current_y += dir_y
-                current_coords = (current_x, current_y)
-                if not (0 <= current_x <= 7 and 0 <= current_y <= 7):
+                x += dir_x
+                y += dir_y
+                if not (0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE):
                     break
-                target = board.get_piece_at(current_coords)
-                if target is None:
-                    possible_moves.append(current_coords)
-                elif self.color != target.color:
-                    possible_moves.append(current_coords)
-                    break
-                else:
+                target = board.get_piece_at((x, y))
+                if target is None or target.color != self.color:
+                    possible_moves.append((x, y))
+                if target is not None or not self.sliding:
                     break
         return possible_moves
 
+
 class Pawn(Piece):
-    """Represents a Pawn chess piece with single/double advance, captures, and en passant.
+    """Represents a Pawn with single/double advance, captures, and en passant.
 
     Attributes:
-        color (str): The piece color ('W' or 'B').
-        value (int): Material value of the pawn (1).
+        forward (int): Vertical step of the pawn (-1 for White, 1 for Black).
+        start_row (int): Row where the pawn may still advance two squares.
+        en_passant_row (int): Row of the target square when this pawn captures en passant.
     """
 
+    value = 1
+    piece_square_table = PAWN_TABLE
+    symbols = ("♟", "♙")
+
     def __init__(self, color):
-        """Initializes a Pawn with its color, movement direction, value, and square table.
+        """Initializes a Pawn and derives its direction from its color.
 
         Args:
             color (str): The color of the pawn ('W' or 'B').
         """
         super().__init__(color)
-        self._directions = (0,1) if self.color == "B" else (0,-1)
-        self.value = 1
-        self._piece_square_table = [
-[ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
-[ 5.0,  5.0,  5.0,  5.0,  5.0,  5.0,  5.0,  5.0],
-[ 1.0,  1.0,  2.0,  3.0,  3.0,  2.0,  1.0,  1.0],
-[ 0.5,  0.5,  1.0,  2.5,  2.5,  1.0,  0.5,  0.5],
-[ 0.0,  0.0,  0.0,  2.0,  2.0,  0.0,  0.0,  0.0],
-[ 0.5, -0.5, -1.0,  0.0,  0.0, -1.0, -0.5,  0.5],
-[ 0.5,  1.0,  1.0, -2.0, -2.0,  1.0,  1.0,  0.5],
-[ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0]
-]
-
-    def __str__(self):
-        """Returns the Unicode character representation of the pawn.
-
-        Returns:
-            str: '♟' for White or '♙' for Black.
-        """
-        return "♟" if self.color == "W" else "♙"
-    
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
-
-        Returns:
-            tuple[str, str]: A tuple containing ('♟', '♙').
-        """
-        return ("♟", "♙")
+        is_white = self.color == "W"
+        self.forward = -1 if is_white else 1
+        self.start_row = 6 if is_white else 1
+        self.en_passant_row = 2 if is_white else 5
 
     def get_possible_moves(self, board, coords):
-        """Calculates all possible moves for the pawn including pushes, captures, and en passant.
+        """Calculates pushes, captures, and en passant captures for the pawn.
 
         Args:
             board (Chessboard): The chessboard instance.
@@ -171,236 +196,109 @@ class Pawn(Piece):
         Returns:
             list[tuple]: List of reachable destination coordinate tuples.
         """
-        possible_moves = []
         x, y = coords
-        dir_x, dir_y = self.directions
-        end_x = x + dir_x
-        end_y = y + dir_y
-        end = (end_x, end_y)
-        if 0 <= end_y <= 7:
-            if board.get_piece_at(end) is None:
-                possible_moves.append(end)
-                if ((self.color == "W" and y == 6) or (self.color == "B" and y == 1)) and board.get_piece_at((end_x, y + 2*dir_y)) is None:
-                    possible_moves.append((x, y + 2*dir_y))
-            if x - 1 >= 0:
-                target_left = board.get_piece_at((x - 1, end_y))
-                if (target_left is not None and self.color != target_left.color) or (x - 1, end_y) == board.en_passant_target:
-                    possible_moves.append((x - 1, end_y))
-            if x + 1 <= 7: 
-                target_right = board.get_piece_at((x + 1, end_y))
-                if (target_right is not None and self.color != target_right.color) or (x + 1, end_y) == board.en_passant_target:
-                    possible_moves.append((x + 1, end_y))
+        end_y = y + self.forward
+        if not 0 <= end_y < BOARD_SIZE:
+            return []
+
+        possible_moves = []
+        if board.get_piece_at((x, end_y)) is None:
+            possible_moves.append((x, end_y))
+            double_y = end_y + self.forward
+            if y == self.start_row and board.get_piece_at((x, double_y)) is None:
+                possible_moves.append((x, double_y))
+
+        for end_x in (x - 1, x + 1):
+            if not 0 <= end_x < BOARD_SIZE:
+                continue
+            target = board.get_piece_at((end_x, end_y))
+            is_capture = target is not None and target.color != self.color
+            is_en_passant = (end_x, end_y) == board.en_passant_target and end_y == self.en_passant_row
+            if is_capture or is_en_passant:
+                possible_moves.append((end_x, end_y))
         return possible_moves
+
 
 class Knight(Piece):
-    """Represents a Knight chess piece with L-shaped jumping movement.
+    """Represents a Knight with L-shaped jumping movement."""
 
-    Attributes:
-        color (str): The piece color ('W' or 'B').
-        value (int): Material value of the knight (3).
-    """
-    
-    def __init__(self, color):
-        """Initializes a Knight with its color, L-shaped movement vectors, value, and square table.
+    value = 3
+    directions = ((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1))
+    piece_square_table = KNIGHT_TABLE
+    symbols = ("♞", "♘")
 
-        Args:
-            color (str): The color of the knight ('W' or 'B').
-        """
-        super().__init__(color)
-        self._directions = [(1,2), (1,-2), (-1,2), (-1,-2), (2,1), (2,-1), (-2,1), (-2,-1)]
-        self.value = 3
-        self._piece_square_table = [
-[-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0],
-[-4.0, -2.0,  0.0,  0.0,  0.0,  0.0, -2.0, -4.0],
-[-3.0,  0.0,  1.0,  1.5,  1.5,  1.0,  0.0, -3.0],
-[-3.0,  0.5,  1.5,  2.0,  2.0,  1.5,  0.5, -3.0],
-[-3.0,  0.0,  1.5,  2.0,  2.0,  1.5,  0.0, -3.0],
-[-3.0,  0.5,  1.0,  1.5,  1.5,  1.0,  0.5, -3.0],
-[-4.0, -2.0,  0.0,  0.5,  0.5,  0.0, -2.0, -4.0],
-[-5.0, -4.0, -3.0, -3.0, -3.0, -3.0, -4.0, -5.0]
-]
-    
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
-
-        Returns:
-            tuple[str, str]: A tuple containing ('♞', '♘').
-        """
-        return ("♞", "♘")
-
-    def get_possible_moves(self, board, coords):
-        """Calculates all possible L-shaped jump moves for the knight.
-
-        Args:
-            board (Chessboard): The chessboard instance.
-            coords (tuple): Current (x, y) coordinates of the knight.
-
-        Returns:
-            list[tuple]: List of reachable destination coordinate tuples.
-        """
-        possible_moves = []
-        x, y = coords
-        for dir_x, dir_y in self.directions:
-            end_x = x + dir_x
-            end_y = y + dir_y
-            if 0 <= end_x <= 7 and 0 <= end_y <= 7:
-                target = board.get_piece_at((end_x, end_y))
-                if target is None or target.color != self.color:
-                    possible_moves.append((end_x, end_y))
-        return possible_moves
 
 class Bishop(Piece):
-    """Represents a Bishop chess piece with diagonal sliding movement.
+    """Represents a Bishop with diagonal sliding movement."""
 
-    Attributes:
-        color (str): The piece color ('W' or 'B').
-        value (int): Material value of the bishop (3).
-    """
+    value = 3
+    directions = DIAGONAL
+    sliding = True
+    piece_square_table = BISHOP_TABLE
+    symbols = ("♝", "♗")
 
-    def __init__(self, color):
-        """Initializes a Bishop with its color, diagonal vectors, value, and square table.
 
-        Args:
-            color (str): The color of the bishop ('W' or 'B').
-        """
-        super().__init__(color)
-        self._directions = [(1,1), (1,-1), (-1,1), (-1,-1)]
-        self.value = 3
-        self._piece_square_table = [
-[-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0],
-[-1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0],
-[-1.0,  0.0,  0.5,  1.0,  1.0,  0.5,  0.0, -1.0],
-[-1.0,  0.5,  0.5,  1.0,  1.0,  0.5,  0.5, -1.0],
-[-1.0,  0.0,  1.0,  1.0,  1.0,  1.0,  0.0, -1.0],
-[-1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, -1.0],
-[-1.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.5, -1.0],
-[-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -2.0]
-]
-
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
-
-        Returns:
-            tuple[str, str]: A tuple containing ('♝', '♗').
-        """
-        return ("♝", "♗")
-    
 class Rook(Piece):
-    """Represents a Rook chess piece with orthogonal sliding movement and castling capability.
+    """Represents a Rook with orthogonal sliding movement and castling capability.
 
     Attributes:
-        color (str): The piece color ('W' or 'B').
         has_moved (bool): Whether the rook has moved from its original square.
-        value (int): Material value of the rook (5).
     """
 
-    def __init__(self, color, has_moved = False):
-        """Initializes a Rook with its color, orthogonal vectors, moved status, value, and square table.
+    value = 5
+    directions = ORTHOGONAL
+    sliding = True
+    piece_square_table = ROOK_TABLE
+    symbols = ("♜", "♖")
+
+    def __init__(self, color, has_moved=False):
+        """Initializes a Rook with its color and moved status.
 
         Args:
             color (str): The color of the rook ('W' or 'B').
             has_moved (bool, optional): Whether the rook has already moved. Defaults to False.
         """
         super().__init__(color)
-        self._directions = [(1,0), (-1,0), (0,1), (0,-1)]
         self.has_moved = has_moved
-        self.value = 5
-        self._piece_square_table = [
-[ 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0],
-[ 0.5,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  0.5],
-[-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
-[-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
-[-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
-[-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
-[-0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -0.5],
-[ 0.0,  0.0,  0.0,  0.5,  0.5,  0.0,  0.0,  0.0]
-]
-    
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
 
-        Returns:
-            tuple[str, str]: A tuple containing ('♜', '♖').
-        """
-        return ("♜", "♖")
 
 class Queen(Piece):
-    """Represents a Queen chess piece with orthogonal and diagonal sliding movement.
+    """Represents a Queen with orthogonal and diagonal sliding movement."""
 
-    Attributes:
-        color (str): The piece color ('W' or 'B').
-        value (int): Material value of the queen (9).
-    """
+    value = 9
+    directions = ORTHOGONAL + DIAGONAL
+    sliding = True
+    piece_square_table = QUEEN_TABLE
+    symbols = ("♛", "♕")
 
-    def __init__(self, color):
-        """Initializes a Queen with its color, 8-directional vectors, value, and square table.
-
-        Args:
-            color (str): The color of the queen ('W' or 'B').
-        """
-        super().__init__(color)
-        self._directions = [(1,1), (1,-1), (-1,1), (-1,-1), (1,0), (-1,0), (0,1), (0,-1)]
-        self.value = 9
-        self._piece_square_table = [
-[-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0],
-[-1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, -1.0],
-[-1.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0],
-[-0.5,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5],
-[ 0.0,  0.0,  0.5,  0.5,  0.5,  0.5,  0.0, -0.5],
-[-1.0,  0.5,  0.5,  0.5,  0.5,  0.5,  0.0, -1.0],
-[-1.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0, -1.0],
-[-2.0, -1.0, -1.0, -0.5, -0.5, -1.0, -1.0, -2.0]
-]
-    
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
-
-        Returns:
-            tuple[str, str]: A tuple containing ('♛', '♕').
-        """
-        return ("♛", "♕")
 
 class King(Piece):
-    """Represents a King chess piece with 1-square movement in any direction and castling.
+    """Represents a King with 1-square movement in any direction and castling.
 
     Attributes:
-        color (str): The piece color ('W' or 'B').
         has_moved (bool): Whether the king has moved from its original square.
-        value (int): Material value of the king (900).
     """
 
-    def __init__(self, color, has_moved = False):
-        """Initializes a King with its color, 8-directional vectors, moved status, value, and square table.
+    value = 900
+    directions = ORTHOGONAL + DIAGONAL
+    piece_square_table = KING_TABLE
+    symbols = ("♚", "♔")
+
+    def __init__(self, color, has_moved=False):
+        """Initializes a King with its color and moved status.
 
         Args:
             color (str): The color of the king ('W' or 'B').
             has_moved (bool, optional): Whether the king has already moved. Defaults to False.
         """
         super().__init__(color)
-        self._directions = [(1,1), (1,-1), (-1,1), (-1,-1), (1,0), (-1,0), (0,1), (0,-1)]
         self.has_moved = has_moved
-        self.value = 900
-        self._piece_square_table = [
-[-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-[-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-[-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-[-3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0],
-[-2.0, -3.0, -3.0, -4.0, -4.0, -3.0, -3.0, -2.0],
-[-1.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -1.0],
-[ 2.0,  2.0,  0.0,  0.0,  0.0,  0.0,  2.0,  2.0],
-[ 2.0,  3.0,  1.0,  0.0,  0.0,  1.0,  3.0,  2.0]
-]
-    
-    def tuple_print(self):
-        """Returns Unicode symbols for dark and light square representations.
-
-        Returns:
-            tuple[str, str]: A tuple containing ('♚', '♔').
-        """
-        return ("♚", "♔")
 
     def get_possible_moves(self, board, coords):
-        """Calculates all possible moves for the king including 1-square moves and castling.
+        """Calculates the king's 1-square moves plus castling.
+
+        Whether the king is in check or crosses an attacked square is not verified
+        here; that is the game's job, since it needs the whole position.
 
         Args:
             board (Chessboard): The chessboard instance.
@@ -409,23 +307,19 @@ class King(Piece):
         Returns:
             list[tuple]: List of reachable destination coordinate tuples.
         """
-        possible_moves = []
+        possible_moves = super().get_possible_moves(board, coords)
+        if self.has_moved:
+            return possible_moves
+
         x, y = coords
-        for dir_x, dir_y in self.directions:
-            end_x = x + dir_x
-            end_y = y + dir_y
-            if 0 <= end_x <= 7 and 0 <= end_y <= 7:
-                target = board.get_piece_at((end_x, end_y))
-                if target is None:
-                    possible_moves.append((end_x, end_y))
-                elif self.color != target.color:
-                    possible_moves.append((end_x, end_y))
-        value = 7 if self.color == "W" else 0
-        right_rook = board.get_piece_at((7, value))
-        left_rook = board.get_piece_at((0, value))
-        if not self.has_moved and isinstance(right_rook, Rook) and not right_rook.has_moved and board.get_piece_at((x + 1, y)) is None and board.get_piece_at((x + 2, y)) is None:
-            possible_moves.append((x + 2, y))
-        if not self.has_moved and isinstance(left_rook, Rook) and not left_rook.has_moved and board.get_piece_at((x - 1, y)) is None and board.get_piece_at((x - 2, y)) is None and board.get_piece_at((x - 3, y)) is None:
-            possible_moves.append((x - 2, y))
+        # (rook column, columns that must be empty, king destination column)
+        castling_sides = ((7, (x + 1, x + 2), x + 2), (0, (x - 1, x - 2, x - 3), x - 2))
+        for rook_x, between_xs, end_x in castling_sides:
+            rook = board.get_piece_at((rook_x, y))
+            if (isinstance(rook, Rook) and rook.color == self.color and not rook.has_moved
+                    and all(board.get_piece_at((bx, y)) is None for bx in between_xs)):
+                possible_moves.append((end_x, y))
         return possible_moves
-                    
+
+
+PROMOTION_CLASSES = {"Q": Queen, "R": Rook, "B": Bishop, "N": Knight}

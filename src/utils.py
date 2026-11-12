@@ -1,3 +1,27 @@
+BOARD_SIZE = 8
+FILES = "ABCDEFGH"
+OPPONENT = {"W": "B", "B": "W"}
+
+
+def validate_coords(value, allow_none=False):
+    """Validates that a value is a pair of board coordinates.
+
+    Args:
+        value (tuple or None): The (x, y) coordinates to validate.
+        allow_none (bool, optional): Whether None is an accepted value. Defaults to False.
+
+    Raises:
+        TypeError: If value is not a tuple of two ints (or None when allowed).
+        ValueError: If any coordinate is outside the 0-7 range.
+    """
+    if value is None and allow_none:
+        return
+    if not isinstance(value, tuple) or len(value) != 2 or not all(isinstance(c, int) for c in value):
+        raise TypeError("Coords must be a tuple of two ints")
+    if not all(0 <= c < BOARD_SIZE for c in value):
+        raise ValueError("Coords must be between 0 and 7")
+
+
 def to_coords(square):
     """Converts algebraic chess notation to grid coordinates.
 
@@ -9,23 +33,18 @@ def to_coords(square):
 
     Raises:
         ValueError: If the notation length is not 2, the file letter is invalid,
-            the second character is not a digit, or the rank number is not
-            between 1 and 8.
+            or the rank is not a number between 1 and 8.
     """
     square = square.upper().strip()
     if len(square) != 2:
         raise ValueError("Length not valid")
-    rank = range(8,0, -1)
-    file = ["A", "B", "C", "D", "E", "F", "G", "H"]
-    if square[0] not in file:
+    file, rank = square
+    if file not in FILES:
         raise ValueError("Letter not valid")
-    try:
-        y = 8 - int(square[1])
-    except ValueError:
-        raise ValueError("Second character must be a number")
-    if not (1 <= int(square[1]) <= 8):
+    if rank not in "12345678":
         raise ValueError("Number must be between 1 and 8")
-    return file.index(square[0]), y
+    return FILES.index(file), BOARD_SIZE - int(rank)
+
 
 def to_notation(coords):
     """Converts grid coordinates to algebraic chess notation.
@@ -37,16 +56,9 @@ def to_notation(coords):
         str: The algebraic notation corresponding to the coordinates (e.g., 'E4').
 
     Raises:
-        TypeError: If coords is not a tuple or if coordinate components are not integers.
-        ValueError: If coords length is not 2 or coordinates are not between 0 and 7.
+        TypeError: If coords is not a tuple of two ints.
+        ValueError: If coordinates are not between 0 and 7.
     """
-    if not isinstance(coords, tuple):
-        raise TypeError("Coords must be tuple")
-    if len(coords) != 2:
-        raise ValueError("Length not valid")
-    if not isinstance(coords[0], int) or not isinstance(coords[1], int):
-        raise TypeError("Each coords must be int")
-    if not(0 <= coords[0] <= 7) or not(0 <= coords[1] <= 7):
-        raise ValueError("Coords not valid")
-    file = ["A", "B", "C", "D", "E", "F", "G", "H"]
-    return file[coords[0]] + str(8 - coords[1])
+    validate_coords(coords)
+    x, y = coords
+    return FILES[x] + str(BOARD_SIZE - y)

@@ -1,30 +1,21 @@
-from pieces import *
+from move import Move
+from pieces import PROMOTION_CLASSES, King, Pawn, Rook
+from utils import BOARD_SIZE, validate_coords
+
 
 class Chessboard:
-    """Manages the 8x8 chessboard state, piece positions, and board movements.
+    """Manages the 8x8 chessboard state, piece positions, and move execution.
 
     Attributes:
         grid (list[list[Piece or None]]): 2D list representing squares on the 8x8 board.
-        white_pieces_coords (list[tuple]): Coordinates of all active White pieces.
-        black_pieces_coords (list[tuple]): Coordinates of all active Black pieces.
-        white_king_coords (tuple or None): Current coordinates of the White king.
-        black_king_coords (tuple or None): Current coordinates of the Black king.
         en_passant_target (tuple or None): Target coordinates eligible for en passant.
     """
 
     def __init__(self):
         """Initializes an empty 8x8 chessboard and resets state variables."""
-        grid = []
-        for i in range(8):
-            row = []
-            for j in range(8):
-                row.append(None)
-            grid.append(row)
-        self._grid = grid
-        self._white_pieces_coords = []
-        self._black_pieces_coords = []
-        self.white_king_coords = None
-        self.black_king_coords = None
+        self._grid = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+        self._pieces_coords = {"W": [], "B": []}
+        self._king_coords = {"W": None, "B": None}
         self.en_passant_target = None
 
     @property
@@ -37,80 +28,6 @@ class Chessboard:
         return self._grid
 
     @property
-    def white_pieces_coords(self):
-        """Gets coordinates of all active white pieces.
-
-        Returns:
-            list[tuple]: List of (x, y) coordinate tuples for white pieces.
-        """
-        return self._white_pieces_coords
-    
-    @property
-    def black_pieces_coords(self):
-        """Gets coordinates of all active black pieces.
-
-        Returns:
-            list[tuple]: List of (x, y) coordinate tuples for black pieces.
-        """
-        return self._black_pieces_coords
-    
-    @property
-    def white_king_coords(self):
-        """Gets coordinates of the white king.
-
-        Returns:
-            tuple or None: (x, y) coordinates of the white king, or None.
-        """
-        return self._white_king_coords
-    
-    @white_king_coords.setter
-    def white_king_coords(self, value):
-        """Sets coordinates of the white king.
-
-        Args:
-            value (tuple or None): (x, y) coordinates of the white king, or None.
-
-        Raises:
-            TypeError: If value is not a tuple or None, or coordinates are not valid integers (0-7).
-        """
-        if value is not None:
-            if not isinstance(value, tuple):
-                raise TypeError("King's coords must be tuple or None")
-            if len(value) != 2 or not isinstance(value[0], int) or not isinstance(value[1], int):
-                raise TypeError("Coords not valid")
-            if not (0 <= value[0] <= 7 and 0 <= value[1] <= 7):
-                raise TypeError("Coords not valid")
-        self._white_king_coords = value
-
-    @property
-    def black_king_coords(self):
-        """Gets coordinates of the black king.
-
-        Returns:
-            tuple or None: (x, y) coordinates of the black king, or None.
-        """
-        return self._black_king_coords
-    
-    @black_king_coords.setter
-    def black_king_coords(self, value):
-        """Sets coordinates of the black king.
-
-        Args:
-            value (tuple or None): (x, y) coordinates of the black king, or None.
-
-        Raises:
-            TypeError: If value is not a tuple or None, or coordinates are not valid integers (0-7).
-        """
-        if value is not None:
-            if not isinstance(value, tuple):
-                raise TypeError("King's coords must be tuple or None")
-            if len(value) != 2 or not isinstance(value[0], int) or not isinstance(value[1], int):
-                raise TypeError("Coords not valid")
-            if not (0 <= value[0] <= 7 and 0 <= value[1] <= 7):
-                raise TypeError("Coords not valid")
-        self._black_king_coords = value
-    
-    @property
     def en_passant_target(self):
         """Gets current en passant target square coordinates.
 
@@ -118,7 +35,7 @@ class Chessboard:
             tuple or None: (x, y) coordinates of target square, or None.
         """
         return self._en_passant_target
-    
+
     @en_passant_target.setter
     def en_passant_target(self, value):
         """Sets current en passant target square coordinates.
@@ -127,15 +44,10 @@ class Chessboard:
             value (tuple or None): (x, y) coordinates of target square, or None.
 
         Raises:
-            TypeError: If value is not a tuple or None, or coordinates are not valid integers (0-7).
+            TypeError: If value is not a tuple of two ints or None.
+            ValueError: If coordinates are not between 0 and 7.
         """
-        if value is not None:
-            if not isinstance(value, tuple):
-                raise TypeError("En passant target must be coords (tuple) or None")
-            if len(value) != 2 or not isinstance(value[0], int) or not isinstance(value[1], int):
-                raise TypeError("Coords not valid")
-            if not (0 <= value[0] <= 7 and 0 <= value[1] <= 7):
-                raise TypeError("Coords not valid")
+        validate_coords(value, allow_none=True)
         self._en_passant_target = value
 
     def __str__(self):
@@ -144,27 +56,51 @@ class Chessboard:
         Returns:
             str: String representing the chessboard with ANSI background colors.
         """
+        reset = "\033[0m"
         result = "   A  B  C  D  E  F  G  H  "
-        for y in range(8):
-            result += f"\n{8 - y} "
-            for x in range(8):
-                square = self.grid[y][x]
+        for y in range(BOARD_SIZE):
+            result += f"\n{BOARD_SIZE - y} "
+            for x in range(BOARD_SIZE):
+                piece = self.grid[y][x]
                 is_light_square = (x + y) % 2 == 0
                 bg_color = "\033[47m" if is_light_square else "\033[100m"
-                reset = "\033[0m"
-                if square is None:
-                    result += f"{bg_color}   {reset}"
-                elif square.color == "W":
-                    if is_light_square:
-                        result += f"{bg_color} {square.tuple_print()[1]} {reset}"
-                    else:
-                        result += f"{bg_color} {square.tuple_print()[0]} {reset}"
-                else:
-                    if is_light_square:
-                        result += f"{bg_color} {square.tuple_print()[0]} {reset}"
-                    else:
-                        result += f"{bg_color} {square.tuple_print()[1]} {reset}"
+                glyph = " " if piece is None else piece.symbols[int((piece.color == "W") == is_light_square)]
+                result += f"{bg_color} {glyph} {reset}"
         return result
+
+    def pieces_coords(self, color):
+        """Gets the coordinates of all active pieces of a color.
+
+        Args:
+            color (str): 'W' or 'B'.
+
+        Returns:
+            list[tuple]: List of (x, y) coordinate tuples.
+        """
+        return self._pieces_coords[color]
+
+    def king_coords(self, color):
+        """Gets the coordinates of the king of a color.
+
+        Args:
+            color (str): 'W' or 'B'.
+
+        Returns:
+            tuple or None: (x, y) coordinates of the king, or None if it is not on the board.
+        """
+        return self._king_coords[color]
+
+    def get_piece_at(self, coords):
+        """Retrieves the piece located at the given coordinates.
+
+        Args:
+            coords (tuple): The (x, y) coordinates on the board.
+
+        Returns:
+            Piece or None: The piece at the coordinates, or None if empty.
+        """
+        x, y = coords
+        return self._grid[y][x]
 
     def add_piece(self, piece, coords):
         """Adds a piece to the board at the specified coordinates.
@@ -178,20 +114,11 @@ class Chessboard:
         """
         if self.get_piece_at(coords) is not None:
             return False
-        
         x, y = coords
-        self.grid[y][x] = piece
-
-        if piece.color == "W":
-            self.white_pieces_coords.append(coords)
-
-            if isinstance(piece, King):
-                self.white_king_coords = coords
-        else:
-            self.black_pieces_coords.append(coords)
-
-            if isinstance(piece, King):
-                self.black_king_coords = coords
+        self._grid[y][x] = piece
+        self._pieces_coords[piece.color].append(coords)
+        if isinstance(piece, King):
+            self._king_coords[piece.color] = coords
         return True
 
     def remove_piece(self, coords):
@@ -204,87 +131,117 @@ class Chessboard:
             bool: True if a piece was removed, False if square was empty.
         """
         piece = self.get_piece_at(coords)
-
         if piece is None:
             return False
-        
         x, y = coords
-
-        if piece.color == "W":
-            self.white_pieces_coords.remove(coords)
-
-            if isinstance(piece, King):
-                self.white_king_coords = None
-        else:
-            self.black_pieces_coords.remove(coords)
-
-            if isinstance(piece, King):
-                self.black_king_coords = None
-
-        self.grid[y][x] = None
-
+        self._grid[y][x] = None
+        self._pieces_coords[piece.color].remove(coords)
+        if isinstance(piece, King):
+            self._king_coords[piece.color] = None
         return True
 
-    def get_piece_at(self, coords):
-        """Retrieves the piece located at the given coordinates.
+    def is_promotion(self, start, end):
+        """Checks whether moving the piece at start to end is a pawn promotion.
 
         Args:
-            coords (tuple): The (x, y) coordinates on the board.
+            start (tuple): The starting (x, y) coordinates.
+            end (tuple): The destination (x, y) coordinates.
 
         Returns:
-            Piece or None: The piece at the coordinates, or None if empty.
+            bool: True if a pawn would reach the last row, False otherwise.
         """
-        x, y = coords
-        return self.grid[y][x]
-    
-    def move(self, start, end):
-        """Executes a move on the board including castling, captures, and en passant.
+        return isinstance(self.get_piece_at(start), Pawn) and end[1] in (0, BOARD_SIZE - 1)
+
+    def make_move(self, start, end, promotion=None):
+        """Executes a move (captures, castling, en passant, promotion) WITHOUT validating it.
+
+        Callers must make sure the move is pseudo-legal; use Game.play_move for
+        validated moves.
 
         Args:
             start (tuple): The starting (x, y) coordinates of the piece.
             end (tuple): The destination (x, y) coordinates.
+            promotion (str, optional): Promotion piece key ('Q', 'R', 'B', 'N'). Only
+                used when the move is a promotion. Defaults to 'Q'.
 
         Returns:
-            bool: True if the move was valid and performed, False otherwise.
+            Move: The record needed to revert the move with undo_move.
         """
         piece = self.get_piece_at(start)
-        if piece is None:
-            return False
-        
-        possible_moves = piece.get_possible_moves(self, start)
-        if end not in possible_moves:
-            return False
-        
-        target = self.get_piece_at(end)
-        if target is not None:
-            self.remove_piece(end)
-        
-        # Castling
+        is_promotion = self.is_promotion(start, end)
+        move = Move(
+            start, end, piece,
+            previous_en_passant=self.en_passant_target,
+            previous_has_moved=piece.has_moved,
+        )
         start_x, start_y = start
         end_x, end_y = end
 
-        if isinstance(piece, King) and abs(start_x - end_x) == 2:
-            dir_x = 1 if end_x > start_x else -1
-            rook_x = 7 if end_x > start_x else 0
-            self.remove_piece((rook_x, start_y))
-            self.add_piece(Rook(piece.color, True), (start_x + dir_x, start_y))
-            piece.has_moved = True
-        elif isinstance(piece, King):
-            piece.has_moved = True
-        elif isinstance(piece, Rook):
+        # Capture. For en passant the victim is beside the pawn, not on the destination.
+        captured_coords = end
+        if isinstance(piece, Pawn) and end == self.en_passant_target:
+            captured_coords = (end_x, start_y)
+        captured = self.get_piece_at(captured_coords)
+        if captured is not None:
+            move.captured = captured
+            move.captured_coords = captured_coords
+            self.remove_piece(captured_coords)
+
+        # Castling: the rook jumps over the king.
+        if isinstance(piece, King) and abs(end_x - start_x) == 2:
+            rook_start_x, rook_end_x = (7, end_x - 1) if end_x > start_x else (0, end_x + 1)
+            rook_start, rook_end = (rook_start_x, start_y), (rook_end_x, start_y)
+            rook = self.get_piece_at(rook_start)
+            self._relocate(rook, rook_start, rook_end)
+            rook.has_moved = True
+            move.rook_move = (rook_start, rook_end)
+
+        if isinstance(piece, (King, Rook)):
             piece.has_moved = True
 
-        # En passant
-        if isinstance(piece, Pawn) and end == self.en_passant_target:
-            value = 1 if piece.color == "W" else -1
-            self.remove_piece((end_x, end_y + value))
-            self.en_passant_target = None
-        elif isinstance(piece, Pawn) and abs(end_y - start_y) == 2:
-            value = -1 if piece.color == "W" else 1
-            self.en_passant_target = (start_x, start_y + value)
-        else:
-            self.en_passant_target = None
-        
+        self.en_passant_target = None
+        if isinstance(piece, Pawn) and abs(end_y - start_y) == 2:
+            self.en_passant_target = (start_x, (start_y + end_y) // 2)
+
+        self._relocate(piece, start, end)
+
+        if is_promotion:
+            promoted = PROMOTION_CLASSES[promotion or "Q"](piece.color)
+            if promoted.has_moved is not None:
+                promoted.has_moved = True
+            self.remove_piece(end)
+            self.add_piece(promoted, end)
+            move.promoted = promoted
+        return move
+
+    def undo_move(self, move):
+        """Reverts a move previously returned by make_move.
+
+        Args:
+            move (Move): The record of the move to revert. Moves must be undone in
+                the reverse order they were made.
+        """
+        self.remove_piece(move.end)  # the moved piece, or the promoted one
+        self.add_piece(move.piece, move.start)
+        move.piece.has_moved = move.previous_has_moved
+
+        if move.rook_move is not None:
+            rook_start, rook_end = move.rook_move
+            rook = self.get_piece_at(rook_end)
+            self._relocate(rook, rook_end, rook_start)
+            rook.has_moved = False
+
+        if move.captured is not None:
+            self.add_piece(move.captured, move.captured_coords)
+        self.en_passant_target = move.previous_en_passant
+
+    def _relocate(self, piece, start, end):
+        """Moves a piece to an empty square, keeping the coordinate caches in sync.
+
+        Args:
+            piece (Piece): The piece standing on start.
+            start (tuple): The current (x, y) coordinates of the piece.
+            end (tuple): The empty destination (x, y) coordinates.
+        """
         self.remove_piece(start)
         self.add_piece(piece, end)
-        return True

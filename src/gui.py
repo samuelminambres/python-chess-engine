@@ -1,6 +1,9 @@
 import os
 from math import ceil
+
 import pygame
+
+from pieces import PROMOTION_CLASSES
 
 BOARD_DIMENSION = 8
 COLOR_LIGHT = (240, 217, 181)
@@ -13,7 +16,15 @@ PIECE_NAMES = (
     "WPawn", "WRook", "WKnight", "WBishop", "WQueen", "WKing",
     "BPawn", "BRook", "BKnight", "BBishop", "BQueen", "BKing"
 )
-PROMOTION_PIECES = ("Queen", "Rook", "Bishop", "Knight")
+MENU_OPTIONS = (("ai", "vs AI", 42), ("1vs1", "1vs1", 48))
+RESULT_TITLES = {
+    "CHECKMATE": "CHECKMATE!",
+    "TIMEOUT": "TIMEOUT!",
+    "STALEMATE": "STALEMATE!",
+    "DRAW": "DRAW!",
+}
+MIN_THUMB_HEIGHT = 24
+
 
 class Gui:
     """Manages graphical rendering, Pygame windows, menus, and user interactions.
@@ -41,7 +52,7 @@ class Gui:
         pygame.init()
         self.height = height
         self.width = width
-        
+
         self.board_size = self.height
         self.square_size = self.board_size // BOARD_DIMENSION
         self.panel_x = self.square_size * BOARD_DIMENSION
@@ -64,37 +75,61 @@ class Gui:
         self._init_layout()
 
     def _init_layout(self):
-        """Initializes layout coordinates and bounding rectangles for UI elements."""
-        btn_margin = 25
+        """Computes every bounding rectangle once, shared by drawing and click detection."""
+        # Sidebar buttons and move history
+        btn_margin, btn_w, btn_h = 25, 150, 50
         btn_y = self.height - 75
-        btn_h = 50
-        btn_w = 150
-
-        self.undo_btn_rect = pygame.Rect(
-            self.panel_x + btn_margin, btn_y, btn_w, btn_h
-        )
+        self.undo_btn_rect = pygame.Rect(self.panel_x + btn_margin, btn_y, btn_w, btn_h)
         self.restart_btn_rect = pygame.Rect(
             self.panel_x + self.panel_width - btn_margin - btn_w, btn_y, btn_w, btn_h
         )
 
         self.bar_w = 10
         self.bar_x = self.restart_btn_rect.right - self.bar_w
-
         history_x = self.undo_btn_rect.left
-        history_gap_bar = 10
-        history_width = (self.bar_x - history_gap_bar) - history_x
-        
+        history_width = (self.bar_x - 10) - history_x
         self.history_rect = pygame.Rect(history_x, 257, history_width, 435)
-
         self.scroll_track_rect = pygame.Rect(
             self.bar_x, self.history_rect.y, self.bar_w, self.history_rect.height
         )
 
-        self.col_white_x = history_x + 20 + 70
-        self.col_black_x = history_x + 180 + 70
+        col_x = (history_x + 20 + 70, history_x + 180 + 70)  # (white, black)
+        self.col_x = col_x
+        self.col_local_x = tuple(x - self.history_rect.x for x in col_x)
 
-        self.col_white_local_x = self.col_white_x - self.history_rect.x
-        self.col_black_local_x = self.col_black_x - self.history_rect.x
+        # Game mode menu
+        self.menu_rect = self._centered_rect(600, 400)
+        card_size = 240
+        gap = (self.menu_rect.width - card_size * len(MENU_OPTIONS)) // (len(MENU_OPTIONS) + 1)
+        card_y = self.menu_rect.y + 110
+        self.menu_cards = {
+            key: pygame.Rect(self.menu_rect.x + gap + i * (card_size + gap), card_y, card_size, card_size)
+            for i, (key, _, _) in enumerate(MENU_OPTIONS)
+        }
+
+        # Promotion dialog
+        self.promotion_rect = self._centered_rect(650, 200)
+        card_size = 120
+        gap = (self.promotion_rect.width - card_size * len(PROMOTION_CLASSES)) // (len(PROMOTION_CLASSES) + 1)
+        card_y = self.promotion_rect.y + (self.promotion_rect.height - card_size) // 2
+        self.promotion_cards = {
+            code: pygame.Rect(self.promotion_rect.x + gap + i * (card_size + gap), card_y, card_size, card_size)
+            for i, code in enumerate(PROMOTION_CLASSES)
+        }
+
+    def _centered_rect(self, width: int, height: int) -> pygame.Rect:
+        """Creates a rectangle centered on the window.
+
+        Args:
+            width (int): Rectangle width in pixels.
+            height (int): Rectangle height in pixels.
+
+        Returns:
+            pygame.Rect: The centered rectangle.
+        """
+        rect = pygame.Rect(0, 0, width, height)
+        rect.center = (self.width // 2, self.height // 2)
+        return rect
 
     def _get_font(self, size: int) -> pygame.font.Font:
         """Retrieves a cached Font instance for the given point size.
@@ -126,19 +161,24 @@ class Gui:
         Returns:
             pygame.Rect: Bounding rectangle of the drawn text.
         """
-        target = surface or self.display
-        font = self._get_font(size)
-        text_surf = font.render(text, True, color)
-        
+        text_surf = self._get_font(size).render(text, True, color)
         if center:
             text_rect = text_surf.get_rect(center=center)
-        elif topleft:
-            text_rect = text_surf.get_rect(topleft=topleft)
         else:
-            text_rect = text_surf.get_rect()
-            
-        target.blit(text_surf, text_rect)
+            text_rect = text_surf.get_rect(topleft=topleft or (0, 0))
+        (surface or self.display).blit(text_surf, text_rect)
         return text_rect
+
+    def _draw_dialog(self, rect: pygame.Rect):
+        """Dims the whole window and draws a dialog background on top.
+
+        Args:
+            rect (pygame.Rect): Rectangle of the dialog.
+        """
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill(COLOR_OVERLAY)
+        self.display.blit(overlay, (0, 0))
+        pygame.draw.rect(self.display, COLOR_DARK, rect)
 
     def load_images(self):
         """Loads and scales piece image assets from the assets directory."""
@@ -151,6 +191,28 @@ class Gui:
                     image, (self.square_size, self.square_size)
                 )
 
+    # ------------------------------------------------------------------ drawing
+
+    def update_display(self, game, selected_square, show_promotion, show_menu):
+        """Redraws the interface elements and flips the display buffer.
+
+        Args:
+            game (Game): The current game instance.
+            selected_square (tuple or None): The currently selected square (x, y) or None.
+            show_promotion (bool): True if the promotion dialog is active.
+            show_menu (bool): True if the main menu is active.
+        """
+        if show_menu:
+            self.draw_menu()
+        else:
+            self.draw_board()
+            self.draw_information(game)
+            self._draw_highlight(selected_square)
+            self.draw_pieces(game.board)
+            if show_promotion:
+                self.draw_promotion_menu(game)
+        pygame.display.flip()
+
     def draw_board(self):
         """Draws the alternating light and dark squares of the chessboard."""
         for y in range(BOARD_DIMENSION):
@@ -158,6 +220,18 @@ class Gui:
                 color = COLOR_LIGHT if (x + y) % 2 == 0 else COLOR_DARK
                 square = (x * self.square_size, y * self.square_size, self.square_size, self.square_size)
                 pygame.draw.rect(self.display, color, square)
+
+    def _draw_highlight(self, square):
+        """Highlights the selected square.
+
+        Args:
+            square (tuple or None): The (x, y) square to highlight, or None.
+        """
+        if square is None:
+            return
+        highlight = pygame.Surface((self.square_size, self.square_size), pygame.SRCALPHA)
+        highlight.fill(COLOR_HIGHLIGHT)
+        self.display.blit(highlight, (square[0] * self.square_size, square[1] * self.square_size))
 
     def draw_pieces(self, board):
         """Draws all active chess pieces on their corresponding squares.
@@ -172,9 +246,7 @@ class Gui:
                     continue
                 texture = f"{piece.color}{type(piece).__name__}"
                 if texture in self.images:
-                    x_pixel = x * self.square_size
-                    y_pixel = y * self.square_size
-                    self.display.blit(self.images[texture], (x_pixel, y_pixel))
+                    self.display.blit(self.images[texture], (x * self.square_size, y * self.square_size))
 
     def draw_information(self, game):
         """Renders the sidebar panel including the timer, move history, and buttons.
@@ -182,235 +254,137 @@ class Gui:
         Args:
             game (Game): The current game instance.
         """
-        pygame.draw.rect(
-            self.display,
-            COLOR_SIDEBAR,
-            (self.panel_x, 0, self.panel_width, self.height)
-        )
+        pygame.draw.rect(self.display, COLOR_SIDEBAR, (self.panel_x, 0, self.panel_width, self.height))
+        self.draw_timer(game)
 
-        self.timer(game)
-
-        panel_center_x = self.panel_x + (self.panel_width // 2)
+        panel_center_x = self.panel_x + self.panel_width // 2
         self._render_text("Game history:", 28, COLOR_LIGHT, center=(panel_center_x, 165))
-        
-        self._render_text("Whites", 22, COLOR_LIGHT, center=(self.col_white_x, 215))
-        self._render_text("Blacks", 22, COLOR_LIGHT, center=(self.col_black_x, 215))
+        self._render_text("Whites", 22, COLOR_LIGHT, center=(self.col_x[0], 215))
+        self._render_text("Blacks", 22, COLOR_LIGHT, center=(self.col_x[1], 215))
+        self._draw_history(game)
 
-        history_surface = pygame.Surface(self.history_rect.size, pygame.SRCALPHA)
-        history_surface.fill((0, 0, 0, 0))
+        for rect, label in ((self.undo_btn_rect, "UNDO"), (self.restart_btn_rect, "RESTART")):
+            pygame.draw.rect(self.display, COLOR_DARK, rect)
+            self._render_text(label, 20, COLOR_LIGHT, center=rect.center)
 
-        self.scrollbar(game)
-
-        history = str(game).split("\n")
-        for i, line in enumerate(history):
-            if not line.strip():
-                continue
-            y_offset = (i // 2) * self.line_h + self.scroll_y
-            center_y = y_offset + (self.line_h // 2)
-
-            if i % 2 == 0:
-                self._render_text(
-                    line, 15, COLOR_LIGHT,
-                    center=(self.col_white_local_x, center_y),
-                    surface=history_surface
-                )
-            else:
-                self._render_text(
-                    line, 15, COLOR_LIGHT,
-                    center=(self.col_black_local_x, center_y),
-                    surface=history_surface
-                )
-
-        self.display.blit(history_surface, self.history_rect.topleft)
-
-        pygame.draw.rect(self.display, COLOR_DARK, self.undo_btn_rect)
-        self._render_text("UNDO", 20, COLOR_LIGHT, center=self.undo_btn_rect.center)
-
-        pygame.draw.rect(self.display, COLOR_DARK, self.restart_btn_rect)
-        self._render_text("RESTART", 20, COLOR_LIGHT, center=self.restart_btn_rect.center)
-
-    def timer(self, game):
+    def draw_timer(self, game):
         """Renders the active turn player and countdown timer on the sidebar.
 
         Args:
             game (Game): The current game instance.
-
-        Returns:
-            bool: False if the active player's timer has expired, True otherwise.
         """
-        turn = "Whites' " if game.turn == "W" else "Blacks' "
-        timer = game.white_timer if game.turn == "W" else game.black_timer
-        if timer.is_timeout():
-            return False
-
-        center_x = self.panel_x + (self.panel_width // 2)
-        self._render_text(f"{turn}turn", 30, COLOR_LIGHT, center=(center_x, 60))
+        timer = game.current_timer
+        timer.update()
+        turn = "Whites'" if game.turn == "W" else "Blacks'"
+        center_x = self.panel_x + self.panel_width // 2
+        self._render_text(f"{turn} turn", 30, COLOR_LIGHT, center=(center_x, 60))
         self._render_text(str(timer), 28, COLOR_LIGHT, center=(center_x, 110))
-        return True
 
-    def _get_content_height(self, game) -> int:
-        """Calculates the total height of move history content in pixels.
+    def _draw_history(self, game):
+        """Renders the scrollable move history, two moves (White, Black) per row.
+
+        Args:
+            game (Game): The current game instance.
+        """
+        self._clamp_scroll(game)
+        surface = pygame.Surface(self.history_rect.size, pygame.SRCALPHA)
+        for i, line in enumerate(str(game).splitlines()):
+            center_y = (i // 2) * self.line_h + self.scroll_y + self.line_h // 2
+            self._render_text(
+                line, 15, COLOR_LIGHT,
+                center=(self.col_local_x[i % 2], center_y),
+                surface=surface
+            )
+        self.display.blit(surface, self.history_rect.topleft)
+        self._draw_scrollbar(game)
+
+    def _content_height(self, game) -> int:
+        """Calculates the total height of the move history content in pixels.
 
         Args:
             game (Game): The current game instance.
 
         Returns:
-            int: The total calculated height in pixels.
+            int: The total height in pixels.
         """
-        total_rows = ceil(len(game.history) / 2) if hasattr(game, "history") else ceil(len(str(game).split("\n")) / 2)
-        return max(1, total_rows * self.line_h)
+        return ceil(len(game.history) / 2) * self.line_h
 
-    def scroll_limits(self, game):
-        """Restricts vertical scroll position within view boundaries.
-
-        Args:
-            game (Game): The current game instance.
-
-        Returns:
-            int: Maximum allowed scroll offset (negative or zero).
-        """
-        visible_h = self.history_rect.height
-        total_h = self._get_content_height(game)
-
-        if total_h > visible_h:
-            max_scroll = visible_h - total_h
-            self.scroll_y = min(0, max(self.scroll_y, max_scroll))
-            return max_scroll
-            
-        self.scroll_y = 0
-        return 0
-
-    def scrollbar(self, game):
-        """Renders the scrollbar track and thumb for the move history view.
+    def _clamp_scroll(self, game):
+        """Restricts the vertical scroll position within the history boundaries.
 
         Args:
             game (Game): The current game instance.
         """
-        self.scroll_limits(game)
-        visible_h = self.history_rect.height
-        total_h = self._get_content_height(game)
+        max_scroll = min(0, self.history_rect.height - self._content_height(game))
+        self.scroll_y = max(max_scroll, min(0, self.scroll_y))
 
+    def _draw_scrollbar(self, game):
+        """Renders the scrollbar track and thumb when the history overflows.
+
+        Args:
+            game (Game): The current game instance.
+        """
+        visible_h = self.history_rect.height
+        total_h = self._content_height(game)
         if total_h <= visible_h:
             return
 
         pygame.draw.rect(self.display, COLOR_SCROLL_TRACK, self.scroll_track_rect)
+        thumb_h = max(MIN_THUMB_HEIGHT, int(visible_h * visible_h / total_h))
+        scroll_pct = -self.scroll_y / (total_h - visible_h)
+        thumb_y = self.scroll_track_rect.y + int(scroll_pct * (visible_h - thumb_h))
+        pygame.draw.rect(self.display, COLOR_LIGHT, pygame.Rect(self.bar_x, thumb_y, self.bar_w, thumb_h))
 
-        min_thumb_h = 24
-        thumb_h = int((visible_h / total_h) * visible_h)
-        thumb_h = max(min_thumb_h, min(thumb_h, visible_h))
+    def draw_menu(self):
+        """Renders the game start menu for selecting the game mode."""
+        self.display.fill(COLOR_DARK)
+        self._draw_dialog(self.menu_rect)
+        self._render_text(
+            "Select game mode:", 28, COLOR_LIGHT,
+            center=(self.menu_rect.centerx, self.menu_rect.y + 50)
+        )
+        for key, label, size in MENU_OPTIONS:
+            card = self.menu_cards[key]
+            pygame.draw.rect(self.display, COLOR_LIGHT, card)
+            self._render_text(label, size, COLOR_DARK, center=card.center)
 
-        scroll_range = total_h - visible_h
-        scroll_pct = (-self.scroll_y) / scroll_range if scroll_range > 0 else 0.0
-
-        available_track_travel = visible_h - thumb_h
-        thumb_y = self.scroll_track_rect.y + int(scroll_pct * available_track_travel)
-
-        thumb_rect = pygame.Rect(self.bar_x, thumb_y, self.bar_w, thumb_h)
-        pygame.draw.rect(self.display, COLOR_LIGHT, thumb_rect)
-
-    def translate_coords(self, x_mouse, y_mouse):
-        """Translates pixel mouse coordinates to board square grid coordinates.
+    def draw_promotion_menu(self, game):
+        """Renders the pawn promotion dialog overlay with selectable pieces.
 
         Args:
-            x_mouse (int): Mouse x coordinate in pixels.
-            y_mouse (int): Mouse y coordinate in pixels.
-
-        Returns:
-            tuple[int, int]: The (col, row) coordinates on the chessboard grid.
+            game (Game): The current game instance.
         """
-        return x_mouse // self.square_size, y_mouse // self.square_size
+        self._draw_dialog(self.promotion_rect)
+        for code, piece_class in PROMOTION_CLASSES.items():
+            card = self.promotion_cards[code]
+            pygame.draw.rect(self.display, COLOR_LIGHT, card)
+            texture = f"{game.turn}{piece_class.__name__}"
+            if texture in self.images:
+                self.display.blit(self.images[texture], self.images[texture].get_rect(center=card.center))
 
     def show_result(self, game, result):
         """Displays an overlay with the final match outcome dialog.
 
         Args:
             game (Game): The current game instance.
-            result (str): Game termination status ('CHECKMATE', 'TIMEOUT', etc.).
+            result (str): Game termination status ('CHECKMATE', 'TIMEOUT', 'STALEMATE', 'DRAW').
         """
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill(COLOR_OVERLAY)
-        self.display.blit(overlay, (0, 0))
+        dialog_rect = self._centered_rect(int(self.width * 0.65), int(self.height * 0.5))
+        self._draw_dialog(dialog_rect)
 
-        dialog_w, dialog_h = int(self.width * 0.65), int(self.height * 0.5)
-        dialog_rect = pygame.Rect(0, 0, dialog_w, dialog_h)
-        dialog_rect.center = (self.width // 2, self.height // 2)
-
-        pygame.draw.rect(self.display, COLOR_DARK, dialog_rect)
-
+        # For these results game.turn is the side that lost on board or on time.
         if result in ("CHECKMATE", "TIMEOUT"):
-            title = "CHECKMATE!" if result == "CHECKMATE" else "TIMEOUT!"
-            winner = "Blacks" if game.turn == "W" else "Whites"
-            subtitle = f"{winner} win"
+            subtitle = f"{'Blacks' if game.turn == 'W' else 'Whites'} win"
         else:
-            title = "STALEMATE!"
             subtitle = "Tie"
 
-        self._render_text(title, 70, COLOR_LIGHT, center=(dialog_rect.centerx, dialog_rect.centery - 50))
-        self._render_text(subtitle, 50, COLOR_LIGHT, center=(dialog_rect.centerx, dialog_rect.centery + 50))
-
+        center_x, center_y = dialog_rect.center
+        self._render_text(RESULT_TITLES[result], 70, COLOR_LIGHT, center=(center_x, center_y - 50))
+        self._render_text(subtitle, 50, COLOR_LIGHT, center=(center_x, center_y + 50))
         pygame.display.flip()
 
-    def pawn_promotion_menu(self, game):
-        """Renders the pawn promotion dialog overlay with selectable pieces.
+    # -------------------------------------------------------------- interaction
 
-        Args:
-            game (Game): The current game instance.
-        """
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill(COLOR_OVERLAY)
-        self.display.blit(overlay, (0, 0))
-
-        dialog_w, dialog_h = 650, 200
-        dialog_rect = pygame.Rect(0, 0, dialog_w, dialog_h)
-        dialog_rect.center = (self.width // 2, self.height // 2)
-        pygame.draw.rect(self.display, COLOR_DARK, dialog_rect)
-
-        card_size = 120
-        gap = (dialog_w - (card_size * 4)) // 5
-        card_y = dialog_rect.y + (dialog_h - card_size) // 2
-
-        for i, piece_name in enumerate(PROMOTION_PIECES):
-            card_x = dialog_rect.x + gap + i * (card_size + gap)
-            card_rect = pygame.Rect(card_x, card_y, card_size, card_size)
-            pygame.draw.rect(self.display, COLOR_LIGHT, card_rect)
-
-            texture = f"{game.turn}{piece_name}"
-            if texture in self.images:
-                img_rect = self.images[texture].get_rect(center=card_rect.center)
-                self.display.blit(self.images[texture], img_rect)
-
-    def menu(self):
-        """Renders the game start menu for selecting the game mode."""
-        bg_surface = pygame.Surface((self.width, self.height))
-        bg_surface.fill(COLOR_DARK)
-        self.display.blit(bg_surface, (0, 0))
-
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill(COLOR_OVERLAY)
-        self.display.blit(overlay, (0, 0))
-
-        dialog_w, dialog_h = 600, 400
-        dialog_rect = pygame.Rect(0, 0, dialog_w, dialog_h)
-        dialog_rect.center = (self.width // 2, self.height // 2)
-        pygame.draw.rect(self.display, COLOR_DARK, dialog_rect)
-
-        self._render_text(
-            "Select game mode:", 28, COLOR_LIGHT, 
-            center=(dialog_rect.centerx, dialog_rect.y + 50)
-        )
-
-        card_w, card_h = 240, 240
-        card_y = dialog_rect.y + 110
-        gap = (dialog_w - (card_w * 2)) // 3
-
-        card_ai = pygame.Rect(dialog_rect.x + gap, card_y, card_w, card_h)
-        pygame.draw.rect(self.display, COLOR_LIGHT, card_ai)
-        self._render_text("vs AI", 42, COLOR_DARK, center=card_ai.center)
-
-        card_1v1 = pygame.Rect(card_ai.right + gap, card_y, card_w, card_h)
-        pygame.draw.rect(self.display, COLOR_LIGHT, card_1v1)
-        self._render_text("1vs1", 48, COLOR_DARK, center=card_1v1.center)
-        
     def handle_scroll(self, y_offset: int, sens: int = 5):
         """Scrolls the move history view vertically.
 
@@ -419,6 +393,22 @@ class Gui:
             sens (int, optional): Scroll sensitivity multiplier. Defaults to 5.
         """
         self.scroll_y += y_offset * sens
+
+    @staticmethod
+    def _find_clicked(rects: dict, pos: tuple[int, int]) -> str | None:
+        """Finds which rectangle of a dictionary contains a position.
+
+        Args:
+            rects (dict): Mapping of identifier to pygame.Rect.
+            pos (tuple[int, int]): Screen coordinates (x, y) of the click.
+
+        Returns:
+            str or None: The identifier of the clicked rectangle, or None.
+        """
+        for key, rect in rects.items():
+            if rect.collidepoint(pos):
+                return key
+        return None
 
     def get_menu_selection(self, pos: tuple[int, int]) -> str | None:
         """Determines which game mode card was clicked in the start menu.
@@ -429,20 +419,7 @@ class Gui:
         Returns:
             str or None: 'ai' for AI mode, '1vs1' for 2-player mode, or None.
         """
-        # Se calculan las mismas cajas definidas en menu()
-        dialog_x = (self.width - 600) // 2
-        dialog_y = (self.height - 400) // 2
-        gap = (600 - (240 * 2)) // 3
-        card_y = dialog_y + 110
-
-        ai_rect = pygame.Rect(dialog_x + gap, card_y, 240, 240)
-        pvp_rect = pygame.Rect(ai_rect.right + gap, card_y, 240, 240)
-
-        if ai_rect.collidepoint(pos):
-            return "ai"
-        if pvp_rect.collidepoint(pos):
-            return "1vs1"
-        return None
+        return self._find_clicked(self.menu_cards, pos)
 
     def get_promotion_selection(self, pos: tuple[int, int]) -> str | None:
         """Determines which piece was selected from the promotion menu.
@@ -453,21 +430,7 @@ class Gui:
         Returns:
             str or None: Piece abbreviation ('Q', 'R', 'B', 'N') or None if not clicked.
         """
-        dialog_w, dialog_h = 650, 200
-        dialog_rect = pygame.Rect(0, 0, dialog_w, dialog_h)
-        dialog_rect.center = (self.width // 2, self.height // 2)
-
-        card_size = 120
-        gap = (dialog_w - (card_size * 4)) // 5
-        card_y = dialog_rect.y + (dialog_h - card_size) // 2
-        
-        piece_codes = ["Q", "R", "B", "N"]
-        for i, code in enumerate(piece_codes):
-            card_x = dialog_rect.x + gap + i * (card_size + gap)
-            card_rect = pygame.Rect(card_x, card_y, card_size, card_size)
-            if card_rect.collidepoint(pos):
-                return code
-        return None
+        return self._find_clicked(self.promotion_cards, pos)
 
     def get_sidebar_button(self, pos: tuple[int, int]) -> str | None:
         """Checks if a sidebar action button was clicked.
@@ -478,11 +441,7 @@ class Gui:
         Returns:
             str or None: 'undo' or 'restart' if a button was clicked, None otherwise.
         """
-        if self.undo_btn_rect.collidepoint(pos):
-            return "undo"
-        if self.restart_btn_rect.collidepoint(pos):
-            return "restart"
-        return None
+        return self._find_clicked({"undo": self.undo_btn_rect, "restart": self.restart_btn_rect}, pos)
 
     def is_in_board(self, pos: tuple[int, int]) -> bool:
         """Checks whether the given position lies inside the chessboard area.
@@ -496,35 +455,14 @@ class Gui:
         x, y = pos
         return 0 <= x < self.panel_x and 0 <= y < self.height
 
-    def update_display(self, game, selected_square, promotion, menu):
-        """Redraws the interface elements and flips the display buffer.
+    def translate_coords(self, x_mouse, y_mouse):
+        """Translates pixel mouse coordinates to board square grid coordinates.
 
         Args:
-            game (Game): The current game instance.
-            selected_square (tuple or None): The currently selected square (x, y) or None.
-            promotion (bool): True if the promotion dialog is active.
-            menu (bool): True if the main menu is active.
+            x_mouse (int): Mouse x coordinate in pixels.
+            y_mouse (int): Mouse y coordinate in pixels.
 
         Returns:
-            None
+            tuple[int, int]: The (col, row) coordinates on the chessboard grid.
         """
-        if menu:
-            self.menu()
-            pygame.display.flip()
-            return None
-
-        self.draw_board()
-        self.draw_information(game)
-
-        if selected_square is not None and selected_square[0] < BOARD_DIMENSION:
-            x, y = selected_square
-            highlight = pygame.Surface((self.square_size, self.square_size), pygame.SRCALPHA)
-            highlight.fill(COLOR_HIGHLIGHT)
-            self.display.blit(highlight, (x * self.square_size, y * self.square_size))
-
-        self.draw_pieces(game.board)
-
-        if promotion:
-            self.pawn_promotion_menu(game)
-
-        pygame.display.flip()
+        return x_mouse // self.square_size, y_mouse // self.square_size

@@ -1,23 +1,34 @@
 from chessboard import Chessboard
-from pieces import *
-from utils import to_notation
+from pieces import Bishop, King, Knight, Pawn, Queen, Rook
 from timers import Timer
-from move import Move
+from utils import OPPONENT, to_notation
+
+SUCCESS = "SUCCESS"
+INVALID = "INVALID"
+CHECKMATE = "CHECKMATE"
+STALEMATE = "STALEMATE"
+DRAW = "DRAW"
+TIMEOUT = "TIMEOUT"
+
+BACK_RANK = (Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook)
+FIFTY_MOVE_LIMIT = 100  # half-moves (50 moves by each player)
+REPETITION_LIMIT = 3
+
 
 class Game:
-    """Controls the overall chess game rules, turn cycles, timers, and move execution.
+    """Controls the chess rules, turn cycle, timers, and move history.
 
     Attributes:
         board (Chessboard): The active chessboard instance.
         turn (str): Current player turn ('W' or 'B').
         white_timer (Timer): Clock timer for the White player.
         black_timer (Timer): Clock timer for the Black player.
-        half_move_clock (int): Half-move clock counter for the 50-move draw rule.
+        half_move_clock (int): Half-moves since the last pawn move or capture.
         history (list[Move]): Chronological list of completed moves.
-        initial_position_key (tuple or None): State snapshot signature of the starting board.
+        initial_position_key (tuple or None): Signature of the starting position.
     """
 
-    def __init__(self, time_limit = 600.0, increment = 0.0):
+    def __init__(self, time_limit=600.0, increment=0.0):
         """Initializes a new chess game.
 
         Args:
@@ -33,29 +44,6 @@ class Game:
         self.initial_position_key = None
 
     @property
-    def board(self):
-        """Gets the chessboard instance.
-
-        Returns:
-            Chessboard: The game board.
-        """
-        return self._board
-    
-    @board.setter
-    def board(self, value):
-        """Sets the chessboard instance.
-
-        Args:
-            value (Chessboard): The game board.
-
-        Raises:
-            TypeError: If value is not a Chessboard instance.
-        """
-        if not isinstance(value, Chessboard):
-            raise TypeError("Board must be Chessboard")
-        self._board = value
-
-    @property
     def turn(self):
         """Gets the current player's turn.
 
@@ -63,7 +51,7 @@ class Game:
             str: 'W' for White or 'B' for Black.
         """
         return self._turn
-    
+
     @turn.setter
     def turn(self, value):
         """Sets the current player's turn.
@@ -82,52 +70,6 @@ class Game:
         self._turn = value
 
     @property
-    def white_timer(self):
-        """Gets the timer for the White player.
-
-        Returns:
-            Timer: White's timer.
-        """
-        return self._white_timer
-    
-    @white_timer.setter
-    def white_timer(self, value):
-        """Sets the timer for the White player.
-
-        Args:
-            value (Timer): White's timer.
-
-        Raises:
-            TypeError: If value is not a Timer instance.
-        """
-        if not isinstance(value, Timer):
-            raise TypeError("Timer must be a Timer")
-        self._white_timer = value
-    
-    @property
-    def black_timer(self):
-        """Gets the timer for the Black player.
-
-        Returns:
-            Timer: Black's timer.
-        """
-        return self._black_timer
-    
-    @black_timer.setter
-    def black_timer(self, value):
-        """Sets the timer for the Black player.
-
-        Args:
-            value (Timer): Black's timer.
-
-        Raises:
-            TypeError: If value is not a Timer instance.
-        """
-        if not isinstance(value, Timer):
-            raise TypeError("Timer must be a Timer")
-        self._black_timer = value
-        
-    @property
     def half_move_clock(self):
         """Gets the half-move clock counter for the 50-move rule.
 
@@ -135,7 +77,7 @@ class Game:
             int: Number of half-moves since last pawn move or capture.
         """
         return self._half_move_clock
-    
+
     @half_move_clock.setter
     def half_move_clock(self, value):
         """Sets the half-move clock counter for the 50-move rule.
@@ -154,27 +96,13 @@ class Game:
         self._half_move_clock = value
 
     @property
-    def history(self):
-        """Gets the list of played moves.
+    def current_timer(self):
+        """Gets the timer of the player whose turn it is.
 
         Returns:
-            list: Move history list.
+            Timer: The timer of the side to move.
         """
-        return self._history
-    
-    @history.setter
-    def history(self, value):
-        """Sets the list of played moves.
-
-        Args:
-            value (list): Move history list.
-
-        Raises:
-            TypeError: If value is not a list.
-        """
-        if not isinstance(value, list):
-            raise TypeError("History must be list")
-        self._history = value
+        return self.white_timer if self.turn == "W" else self.black_timer
 
     def __str__(self):
         """Returns the formatted move history in algebraic notation.
@@ -182,150 +110,131 @@ class Game:
         Returns:
             str: String of moves in format 'A1 -> A2\\n'.
         """
-        result = ""
-        for move in self.history:
-            result += f"{to_notation(move.start)} -> {to_notation(move.end)}\n"
-        return result
+        return "".join(f"{to_notation(m.start)} -> {to_notation(m.end)}\n" for m in self.history)
 
     def setup_standard_board(self):
         """Sets up initial piece positions and records the starting position signature."""
-        for i in range(8):
-            self.board.add_piece(Pawn("B"), (i, 1))
-            self.board.add_piece(Pawn("W"), (i, 6))
-
-        back_rank = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
-        
-        for x, piece_class in enumerate(back_rank):
+        for x, piece_class in enumerate(BACK_RANK):
             self.board.add_piece(piece_class("B"), (x, 0))
+            self.board.add_piece(Pawn("B"), (x, 1))
+            self.board.add_piece(Pawn("W"), (x, 6))
             self.board.add_piece(piece_class("W"), (x, 7))
-            
         self.initial_position_key = self.get_position_key()
 
-    def undo_move(self):
-        """Reverts the last move made, restoring pieces and board state."""
-        last_move = self.history.pop()
-        piece = last_move.piece
-        target = last_move.target
-        start = last_move.start
-        end = last_move.end
-        start_x, start_y = start
-        end_x, end_y = end
-        has_moved = last_move.has_moved
-        en_passant_target = last_move.en_passant_target
+    def start_clock(self):
+        """Starts the clock of the player whose turn it is."""
+        self.current_timer.start()
 
-        # undo castling
-        if isinstance(last_move.piece, King) and abs(start_x - end_x) == 2:
-            dir_x = 1 if end_x > start_x else -1
-            rook_x = 7 if end_x > start_x else 0
-            self.board.remove_piece((start_x + dir_x, start_y))
-            self.board.add_piece(Rook(piece.color), (rook_x, start_y))
+    def swap_turn(self):
+        """Swaps the turn between White ('W') and Black ('B')."""
+        self.turn = OPPONENT[self.turn]
 
-        # undo move
-        self.board.remove_piece(end)
-        self.board.add_piece(piece, start)
+    def make_move(self, start, end, promotion=None):
+        """Applies a move and passes the turn WITHOUT validating it or touching the clocks.
 
-        if isinstance(piece, Rook) or isinstance(piece, King):
-            piece.has_moved = has_moved
-        
-        if target is not None:
-            self.board.add_piece(target, end)
+        Meant for search algorithms that apply and revert moves with undo_move.
 
-        # en passant
-        elif (end_x, end_y) == en_passant_target:
-            value = 1 if piece.color == "W" else -1
-            color = "B" if piece.color == "W" else "W"
-            self.board.add_piece(Pawn(color), (end_x, end_y + value))
-
-        self.board.en_passant_target = en_passant_target
-
-    def check(self):
-        """Checks whether the current player's king is currently in check.
+        Args:
+            start (tuple): The starting (x, y) coordinates.
+            end (tuple): The destination (x, y) coordinates.
+            promotion (str, optional): Promotion piece key ('Q', 'R', 'B', 'N'). Defaults to 'Q'.
 
         Returns:
-            bool: True if the current player's king is attacked, False otherwise.
+            Move: The record of the applied move (also appended to history).
         """
-        if self.turn == "W":
-            my_king_coords = self.board.white_king_coords
-            other_coords = self.board.black_pieces_coords
+        move = self.board.make_move(start, end, promotion)
+        move.previous_half_move_clock = self.half_move_clock
+        if isinstance(move.piece, Pawn) or move.captured is not None:
+            self.half_move_clock = 0
         else:
-            my_king_coords = self.board.black_king_coords
-            other_coords = self.board.white_pieces_coords
-        
-        for coords in other_coords:
+            self.half_move_clock += 1
+        self.history.append(move)
+        self.swap_turn()
+        return move
+
+    def undo_move(self):
+        """Reverts the last move, restoring the board, half-move clock, and turn."""
+        move = self.history.pop()
+        self.board.undo_move(move)
+        self.half_move_clock = move.previous_half_move_clock
+        self.swap_turn()
+
+    def undo_turns(self, count=1):
+        """Reverts the last moves and gives the running clock back to the side to move.
+
+        Args:
+            count (int, optional): Number of half-moves to revert. Defaults to 1.
+
+        Returns:
+            bool: True if the moves were reverted, False if the history is too short.
+        """
+        if len(self.history) < count:
+            return False
+        for _ in range(count):
+            self.undo_move()
+        self.white_timer.pause()
+        self.black_timer.pause()
+        self.start_clock()
+        return True
+
+    def is_in_check(self, color=None):
+        """Checks whether a king is attacked.
+
+        Args:
+            color (str, optional): Color of the king to check. Defaults to the side to move.
+
+        Returns:
+            bool: True if the king is attacked, False otherwise.
+        """
+        color = color or self.turn
+        king_coords = self.board.king_coords(color)
+        for coords in self.board.pieces_coords(OPPONENT[color]):
             piece = self.board.get_piece_at(coords)
-            piece_moves = piece.get_possible_moves(self.board, coords)
-            if my_king_coords in piece_moves:
+            if king_coords in piece.get_possible_moves(self.board, coords):
                 return True
         return False
-    
+
     def is_insufficient_material(self):
         """Determines if the game is a draw due to insufficient material to checkmate.
 
         Returns:
-            bool: True if insufficient material exists on the board, False otherwise.
+            bool: True for king vs king, or king vs king plus one minor piece.
         """
-        if len(self.board.white_pieces_coords) == 1 and len(self.board.black_pieces_coords) == 1:
-            return True
-        elif len(self.board.white_pieces_coords) == 1 and len(self.board.black_pieces_coords) <= 2:
-            for coords in self.board.black_pieces_coords:
-                if not isinstance(self.board.get_piece_at(coords), King) and not isinstance(self.board.get_piece_at(coords), Bishop) and not isinstance(self.board.get_piece_at(coords), Knight):
-                    return False
-            return True
-        elif len(self.board.black_pieces_coords) == 1 and len(self.board.white_pieces_coords) <= 2:
-            for coords in self.board.white_pieces_coords:
-                if not isinstance(self.board.get_piece_at(coords), King) and not isinstance(self.board.get_piece_at(coords), Bishop) and not isinstance(self.board.get_piece_at(coords), Knight):
-                    return False
-            return True
+        white = self.board.pieces_coords("W")
+        black = self.board.pieces_coords("B")
+        for lone_king, other in ((white, black), (black, white)):
+            if len(lone_king) == 1 and len(other) <= 2:
+                return all(isinstance(self.board.get_piece_at(c), (King, Bishop, Knight)) for c in other)
         return False
-    
-    def get_position_key(self, turn = None):
+
+    def get_position_key(self):
         """Generates an immutable signature of the current board and game state.
 
-        Encapsulates piece layout, castling rights (via piece movement flags),
-        player turn, and en passant target coordinates to evaluate FIDE threefold
-        repetition rules.
-
-        Args:
-            turn (str, optional): The player turn ('W' or 'B') associated with the
-                position. Defaults to None, which uses the current game turn.
+        Encapsulates piece layout, castling rights (via piece movement flags), the
+        player to move, and the en passant target, to evaluate threefold repetition.
 
         Returns:
-            tuple[str, str, tuple or None]: A tuple containing the serialized
-                64-square grid string, the active player turn, and the en passant
-                target coordinates.
+            tuple: The 64-square layout, the player to move, and the en passant target.
         """
-        if turn is None:
-            turn = self.turn
-
-        pieces = []
-        for row in self.board.grid:
-            for piece in row:
-                if piece is None:
-                    pieces.append(".")
-                else:
-                    pieces.append(f"{piece.color}{type(piece).__name__[0]}{piece.has_moved}")
-
-        return ("".join(pieces), turn, self.board.en_passant_target)
+        squares = tuple(
+            None if piece is None else (piece.color, type(piece).__name__, piece.has_moved)
+            for row in self.board.grid
+            for piece in row
+        )
+        return (squares, self.turn, self.board.en_passant_target)
 
     def is_threefold_repetition(self, current_key):
-        """Determines whether the given board state has occurred three or more times.
-
-        Compares the provided state key against the initial board state and all
-        historical move snapshots stored in self.history.
+        """Determines whether the given position has occurred three or more times.
 
         Args:
-            current_key (tuple): The position state key generated by get_position_key.
+            current_key (tuple): The position signature generated by get_position_key.
 
         Returns:
             bool: True if the position has occurred at least 3 times, False otherwise.
         """
-        count = 1 if self.initial_position_key == current_key else 0
-
-        for move in self.history:
-            if getattr(move, "position_key", None) == current_key:
-                count += 1
-
-        return count >= 3
+        count = int(self.initial_position_key == current_key)
+        count += sum(move.position_key == current_key for move in self.history)
+        return count >= REPETITION_LIMIT
 
     def get_all_legal_moves(self):
         """Generates all legal (start, end) coordinate moves for the current player.
@@ -334,141 +243,92 @@ class Game:
             list[tuple[tuple[int, int], tuple[int, int]]]: List of tuples with start and end coordinates.
         """
         legal_moves = []
-        if self.turn == "W":
-            my_coords = list(self.board.white_pieces_coords)
-        else:
-            my_coords = list(self.board.black_pieces_coords)
-
-        for start in my_coords:
-            start_x, start_y = start
+        # Iterate over a copy: simulating moves reorders the coordinate lists.
+        for start in list(self.board.pieces_coords(self.turn)):
             piece = self.board.get_piece_at(start)
-            piece_moves = piece.get_possible_moves(self.board, start)
-
-            for end in piece_moves:
-                end_x, end_y = end
-
-                # simulate move
-                target = self.board.get_piece_at(end)
-                self.board.move(start, end)
-                self.history.append(Move(start, end, piece, target, self.board.en_passant_target, piece.has_moved, self.half_move_clock))
-
-                if not self.check():
-                    # castling comprobations
-                    if isinstance(piece, King) and abs(start_x - end_x) == 2:
-                        self.undo_move()
-                        was_in_check = self.check()
-                        dir_x = 1 if end_x > start_x else -1
-                        self.board.move(self, start, (start_x + dir_x, start_y))
-                        passed_trough_check = self.check()
-
-                        if was_in_check or passed_trough_check:
-                            self.undo_move()
-                            continue
-
+            for end in piece.get_possible_moves(self.board, start):
+                if self._is_legal(piece, start, end):
                     legal_moves.append((start, end))
-
-                self.undo_move()
-
         return legal_moves
-    
-    def pawn_promotion(self, coords):
-        """Checks if a pawn at coords has reached the opposite end of the board.
 
-        Args:
-            coords (tuple): The (x, y) coordinates of the square to check.
-
-        Returns:
-            bool: True if the piece at coords is a Pawn on row 0 or 7, False otherwise.
-        """
-        x, y = coords
-        return (y == 0 or y == 7) and isinstance(self.board.get_piece_at(coords), Pawn)
-    
-    def promotion_to(self, piece, coords):
-        """Replaces a pawn at the given coordinates with the promoted piece type.
-
-        Args:
-            piece (str): Target piece abbreviation ('Q', 'R', 'B', 'N').
-            coords (tuple): The (x, y) board coordinates of the promoting pawn.
-        """
-        pawn = self.board.get_piece_at(coords)
-        self.board.remove_piece(coords)
-
-        if piece == "Q":
-            self.board.add_piece(Queen(pawn.color), coords)
-        elif piece == "R":
-            self.board.add_piece(Rook(pawn.color, has_moved = True), coords)
-        elif piece == "B":
-            self.board.add_piece(Bishop(pawn.color), coords)
-        elif piece == "N":
-            self.board.add_piece(Knight(pawn.color), coords)
-
-    def swap_turn(self):
-        """Swaps the turn between White ('W') and Black ('B')."""
-        if self.turn == "W":
-            self.turn = "B"
-        else:
-            self.turn = "W"
-
-    def play_move(self, start, end):
-        """Attempts to play a move from start to end coordinates and updates game state.
+    def is_legal_move(self, start, end):
+        """Checks whether a move is legal for the current player.
 
         Args:
             start (tuple): The starting (x, y) coordinates.
             end (tuple): The destination (x, y) coordinates.
 
         Returns:
-            str: Move status outcome ('SUCCESS', 'INVALID', 'CHECKMATE', 'STALEMATE',
-                'DRAW', or 'TIMEOUT').
+            bool: True if the move is legal, False otherwise.
         """
-        legal_moves = self.get_all_legal_moves()
+        return (start, end) in self.get_all_legal_moves()
 
-        # Checkmate and stalemate comprobations
-        if len(legal_moves) == 0:
-            check = self.check()
-            if check:
-                return "CHECKMATE"
-            return "STALEMATE"
-        
-        if (start, end) not in legal_moves:
-            return "INVALID"
-        
-        piece = self.board.get_piece_at(start)
-        target = self.board.get_piece_at(end)
-        self.board.move(start, end)
-        
-        # 50 moves rule
-        if isinstance(piece, Pawn) or target is not None:
-            self.half_move_clock = 0
-        else:
-            self.half_move_clock += 1
-        
-        if self.half_move_clock == 50:
-            return "DRAW"
-            
-        # Threefold repetition evaluation
-        next_turn = "B" if self.turn == "W" else "W"
-        current_key = self.get_position_key(turn=next_turn)
+    def play_move(self, start, end, promotion=None):
+        """Plays a move if it is legal and reports the resulting game status.
 
-        new_move = Move(start, end, piece, target, self.board.en_passant_target, piece.has_moved, self.half_move_clock)
-        new_move.position_key = current_key
-        self.history.append(new_move)
-        
-        if self.is_threefold_repetition(current_key):
-            return "DRAW"
-        
-        # Insufficient material
-        if self.is_insufficient_material():
-            return "DRAW"
+        Args:
+            start (tuple): The starting (x, y) coordinates.
+            end (tuple): The destination (x, y) coordinates.
+            promotion (str, optional): Promotion piece key ('Q', 'R', 'B', 'N'). Defaults to 'Q'.
 
-        # Timer
-        if self.white_timer.is_timeout() or self.black_timer.is_timeout():
-                return "TIMEOUT"
-        if self.turn == "W":
-            self.white_timer.stop()
-            self.black_timer.start()
-        else:
-            self.black_timer.stop()
-            self.white_timer.start()
-    
-        return "SUCCESS"
-        
+        Returns:
+            str: SUCCESS if the game goes on, INVALID if the move was rejected (nothing
+                changes), TIMEOUT if the mover's clock had expired (nothing changes), or
+                CHECKMATE, STALEMATE, DRAW if the move ended the game. After a game-ending
+                move, turn is the side that is checkmated or stalemated.
+        """
+        mover_timer = self.current_timer
+        if mover_timer.is_timeout():
+            return TIMEOUT
+        if not self.is_legal_move(start, end):
+            return INVALID
+
+        move = self.make_move(start, end, promotion)
+        move.position_key = self.get_position_key()
+        mover_timer.stop()
+        self.start_clock()
+
+        if not self.get_all_legal_moves():
+            return CHECKMATE if self.is_in_check() else STALEMATE
+        if (self.half_move_clock >= FIFTY_MOVE_LIMIT
+                or self.is_threefold_repetition(move.position_key)
+                or self.is_insufficient_material()):
+            return DRAW
+        return SUCCESS
+
+    def _is_legal(self, piece, start, end):
+        """Checks that a pseudo-legal move does not leave the mover's king in check.
+
+        Castling additionally requires that the king is not in check and does not
+        cross an attacked square.
+
+        Args:
+            piece (Piece): The piece making the move.
+            start (tuple): The starting (x, y) coordinates.
+            end (tuple): The destination (x, y) coordinates.
+
+        Returns:
+            bool: True if the move is legal, False otherwise.
+        """
+        color = piece.color
+        if isinstance(piece, King) and abs(end[0] - start[0]) == 2:
+            crossed_square = ((start[0] + end[0]) // 2, start[1])
+            if self.is_in_check(color) or not self._is_king_safe_after(color, start, crossed_square):
+                return False
+        return self._is_king_safe_after(color, start, end)
+
+    def _is_king_safe_after(self, color, start, end):
+        """Simulates a move and checks whether the mover's king is safe afterwards.
+
+        Args:
+            color (str): Color of the moving player.
+            start (tuple): The starting (x, y) coordinates.
+            end (tuple): The destination (x, y) coordinates.
+
+        Returns:
+            bool: True if the king is not attacked after the move, False otherwise.
+        """
+        move = self.board.make_move(start, end)
+        is_safe = not self.is_in_check(color)
+        self.board.undo_move(move)
+        return is_safe
